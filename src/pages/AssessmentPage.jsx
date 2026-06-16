@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth, apiFetch } from '../context/AuthContext'
 import Navbar from '../components/Navbar'
 import { ASSESSMENT_QUESTIONS } from '../data/mockData'
 
 export default function AssessmentPage() {
   const { moduleId } = useParams()
   const navigate = useNavigate()
-  const { enrollment, enroll } = useAuth()
+  const { enrollment, refreshEnrollment } = useAuth()
 
   const questions = ASSESSMENT_QUESTIONS[moduleId] || ASSESSMENT_QUESTIONS[1]
   const module = enrollment?.roadmap?.find(m => m.id === parseInt(moduleId))
@@ -16,7 +16,7 @@ export default function AssessmentPage() {
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState(0)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (Object.keys(answers).length < questions.length) {
       alert('Please answer all questions before submitting.')
       return
@@ -27,23 +27,16 @@ export default function AssessmentPage() {
     })
     const pct = Math.round((correct / questions.length) * 100)
     setScore(pct)
-    setSubmitted(true)
 
-    // Update roadmap if passed
-    const passed = pct >= (module?.passingScore || 70)
-    if (passed && enrollment) {
-      const moduleIndex = enrollment.roadmap.findIndex(m => m.id === parseInt(moduleId))
-      const updated = enrollment.roadmap.map((mod, mi) => {
-        if (mi === moduleIndex) return { ...mod, assessmentPassed: true, completed: true }
-        if (mi === moduleIndex + 1) {
-          return {
-            ...mod,
-            lessons: mod.lessons.map((l, li) => li === 0 ? { ...l, locked: false } : l)
-          }
-        }
-        return mod
+    try {
+      await apiFetch(`/api/assessments/${moduleId}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({ score: pct })
       })
-      enroll({ ...enrollment, roadmap: updated })
+      await refreshEnrollment()
+      setSubmitted(true)
+    } catch (err) {
+      alert(err.message || 'Failed to submit assessment')
     }
   }
 

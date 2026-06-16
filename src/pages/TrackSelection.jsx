@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth, apiFetch } from '../context/AuthContext'
 import Navbar from '../components/Navbar'
-import { TRACKS, MENTORS, generateRoadmap } from '../data/mockData'
 
 const colorMap = {
   purple: 'bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-900/50',
@@ -28,16 +27,37 @@ export default function TrackSelection() {
   const [step, setStep] = useState(1) // 1=track, 2=mentor
   const [selectedTrack, setSelectedTrack] = useState(null)
   const [selectedMentor, setSelectedMentor] = useState(null)
-  const { enroll } = useAuth()
+  const [tracks, setTracks] = useState([])
+  const [mentors, setMentors] = useState([])
+  const { enrollTrack } = useAuth()
   const navigate = useNavigate()
 
-  const mainCourses = TRACKS.filter(t => t.type === 'Main Course')
-  const bootcamps = TRACKS.filter(t => t.type === 'Bootcamp')
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [tracksData, mentorsData] = await Promise.all([
+          apiFetch('/api/tracks'),
+          apiFetch('/api/mentors')
+        ])
+        setTracks(tracksData)
+        setMentors(mentorsData)
+      } catch (err) {
+        console.error('Failed to load tracks/mentors', err)
+      }
+    }
+    loadData()
+  }, [])
 
-  const handleConfirm = () => {
-    const roadmap = generateRoadmap(selectedTrack.id)
-    enroll({ track: selectedTrack, mentor: selectedMentor, roadmap, progress: 0, streak: 1 })
-    navigate('/dashboard')
+  const mainCourses = tracks.filter(t => t.type === 'Main Course')
+  const bootcamps = tracks.filter(t => t.type === 'Bootcamp')
+
+  const handleConfirm = async () => {
+    try {
+      await enrollTrack(selectedTrack.id, selectedMentor.id)
+      navigate('/dashboard')
+    } catch (err) {
+      alert(err.message || 'Enrollment failed')
+    }
   }
 
   return (
@@ -132,7 +152,7 @@ export default function TrackSelection() {
             <p className="text-gray-500 dark:text-slate-400 text-center mb-10 text-sm sm:text-base">Your mentor will guide you, review assessments, and provide key reviews</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-2xl mx-auto mb-10">
-              {MENTORS.map(mentor => (
+              {mentors.map(mentor => (
                 <button
                   key={mentor.id}
                   onClick={() => setSelectedMentor(mentor)}

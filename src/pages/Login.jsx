@@ -8,16 +8,19 @@ export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.email || !form.password) {
       setError('Please fill in all fields.')
       return
     }
-    // Simulate login — replace with real API call later
-    const isMentor = form.email.includes('mentor')
-    login({ name: form.email.split('@')[0], email: form.email, role: isMentor ? 'mentor' : 'student' })
-    navigate(isMentor ? '/mentor' : '/tracks')
+    try {
+      setError('')
+      const loggedInUser = await login(form.email, form.password)
+      navigate(loggedInUser.role === 'mentor' ? '/mentor' : '/tracks')
+    } catch (err) {
+      setError(err.message || 'Login failed')
+    }
   }
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-indigo-50 to-purple-100 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/40 flex items-center justify-center px-4 transition-all duration-300">

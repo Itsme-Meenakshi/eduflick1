@@ -5,17 +5,22 @@ import { useAuth } from '../context/AuthContext'
 export default function Register() {
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'student' })
   const [error, setError] = useState('')
-  const { login } = useAuth()
+  const { register } = useAuth()
   const navigate = useNavigate()
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.name || !form.email || !form.password) {
       setError('Please fill in all fields.')
       return
     }
-    login({ name: form.name, email: form.email, role: form.role })
-    navigate(form.role === 'mentor' ? '/mentor' : '/tracks')
+    try {
+      setError('')
+      const registeredUser = await register(form.name, form.email, form.password, form.role)
+      navigate(registeredUser.role === 'mentor' ? '/mentor' : '/tracks')
+    } catch (err) {
+      setError(err.message || 'Registration failed')
+    }
   }
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-indigo-50 to-purple-100 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950/40 flex items-center justify-center px-4 transition-all duration-300">

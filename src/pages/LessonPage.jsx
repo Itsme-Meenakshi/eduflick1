@@ -1,11 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
+import { useAuth, apiFetch } from '../context/AuthContext'
 import Navbar from '../components/Navbar'
 
 export default function LessonPage() {
   const { state } = useLocation()
   const navigate = useNavigate()
-  const { enrollment, enroll } = useAuth()
+  const { enrollment, refreshEnrollment } = useAuth()
 
   if (!state?.lesson) {
     navigate('/dashboard')
@@ -14,19 +14,17 @@ export default function LessonPage() {
 
   const { lesson, moduleIndex, lessonIndex } = state
 
-  const handleComplete = () => {
-    const updated = enrollment.roadmap.map((mod, mi) => {
-      if (mi !== moduleIndex) return mod
-      const updatedLessons = mod.lessons.map((l, li) => {
-        if (li === lessonIndex) return { ...l, completed: true }
-        if (li === lessonIndex + 1) return { ...l, locked: false }
-        return l
+  const handleComplete = async () => {
+    try {
+      await apiFetch('/api/progress/lessons/complete', {
+        method: 'POST',
+        body: JSON.stringify({ moduleIndex, lessonIndex })
       })
-      const allDone = updatedLessons.every(l => l.completed)
-      return { ...mod, lessons: updatedLessons, assessmentUnlocked: allDone }
-    })
-    enroll({ ...enrollment, roadmap: updated })
-    navigate('/dashboard')
+      await refreshEnrollment()
+      navigate('/dashboard')
+    } catch (err) {
+      alert(err.message || 'Failed to complete lesson')
+    }
   }
 
   return (
