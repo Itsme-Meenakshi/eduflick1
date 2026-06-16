@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import Navbar from '../components/Navbar'
 import ProgressBar from '../components/ProgressBar'
 import { MENTOR_STUDENTS } from '../data/mockData'
@@ -5,6 +6,29 @@ import { useAuth } from '../context/AuthContext'
 
 export default function MentorDashboard() {
   const { user } = useAuth()
+  const [submissions, setSubmissions] = useState([])
+
+  useEffect(() => {
+    const loaded = JSON.parse(localStorage.getItem('eduflick_submissions') || '[]')
+    setSubmissions(loaded)
+  }, [])
+
+  const handleReview = (subId, status) => {
+    const loaded = JSON.parse(localStorage.getItem('eduflick_submissions') || '[]')
+    const updated = loaded.map(s => {
+      if (s.id === subId) {
+        return { ...s, status }
+      }
+      return s
+    })
+    localStorage.setItem('eduflick_submissions', JSON.stringify(updated))
+    setSubmissions(updated)
+  }
+
+  const isGenericMentor = user?.name?.toLowerCase() === 'mentor'
+  const activeSubmissions = submissions.filter(s => 
+    isGenericMentor || s.mentorName?.toLowerCase() === user?.name?.toLowerCase()
+  )
 
   const avgProgress = Math.round(MENTOR_STUDENTS.reduce((a, s) => a + s.progress, 0) / MENTOR_STUDENTS.length)
   const completed = MENTOR_STUDENTS.filter(s => s.progress === 100).length
@@ -32,6 +56,63 @@ export default function MentorDashboard() {
             </div>
           ))}
         </div>
+
+        {/* Project Submissions Review Section */}
+        <h2 className="text-base font-extrabold text-gray-805 dark:text-slate-200 mb-5">Project Submissions to Review</h2>
+        {activeSubmissions.length === 0 ? (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 p-6 text-center shadow-sm mb-8">
+            <p className="text-xs text-gray-500 dark:text-slate-400">No project submissions pending review.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+            {activeSubmissions.map(sub => (
+              <div key={sub.id} className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-800 p-5.5 shadow-sm flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                <div>
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-[10px] bg-purple-50 dark:bg-purple-950/45 text-purple-750 dark:text-purple-300 font-extrabold uppercase tracking-wider px-2.5 py-1 rounded-lg border border-purple-200/20 dark:border-purple-900/30">
+                      {sub.projectType} Project
+                    </span>
+                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border ${
+                      sub.status === 'pending' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200/20 dark:border-amber-900/30' :
+                      sub.status === 'approved' ? 'bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 border-green-200/20 dark:border-green-900/30' :
+                      'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200/20 dark:border-red-900/30'
+                    }`}>
+                      {sub.status === 'pending' ? 'Pending Review' : sub.status}
+                    </span>
+                  </div>
+                  <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white leading-tight">{sub.title}</h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-1.5 mb-4 leading-relaxed">{sub.description}</p>
+                  
+                  <div className="bg-gray-50/50 dark:bg-slate-800/40 border border-gray-150 dark:border-slate-800/60 rounded-xl p-3.5 mb-4 text-[11px] leading-relaxed">
+                    <p className="text-gray-650 dark:text-slate-350"><span className="font-bold text-gray-400 dark:text-slate-500">Student:</span> {sub.studentName}</p>
+                    <p className="text-gray-650 dark:text-slate-350"><span className="font-bold text-gray-400 dark:text-slate-500">Track:</span> {sub.trackName}</p>
+                    <p className="text-gray-650 dark:text-slate-350"><span className="font-bold text-gray-400 dark:text-slate-500">Submitted:</span> {sub.submittedAt}</p>
+                    <a href={sub.repoLink} target="_blank" rel="noopener noreferrer" className="text-purple-600 dark:text-purple-400 font-bold hover:underline break-all mt-2 block">
+                      🔗 Repo Link: {sub.repoLink}
+                    </a>
+                  </div>
+                </div>
+
+                {sub.status === 'pending' && (
+                  <div className="flex gap-2.5">
+                    <button
+                      onClick={() => handleReview(sub.id, 'approved')}
+                      className="flex-1 text-xs font-bold bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-450 text-white py-2 rounded-xl transition-all shadow-md shadow-green-600/10 active:scale-95"
+                    >
+                      Approve ✓
+                    </button>
+                    <button
+                      onClick={() => handleReview(sub.id, 'rejected')}
+                      className="flex-1 text-xs font-bold bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-450 text-white py-2 rounded-xl transition-all shadow-md shadow-red-650/10 active:scale-95"
+                    >
+                      Reject ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Student list */}
         <h2 className="text-base font-extrabold text-gray-800 dark:text-slate-200 mb-5">Students Under Supervision</h2>

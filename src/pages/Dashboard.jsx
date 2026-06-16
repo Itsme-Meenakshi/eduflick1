@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Navbar from '../components/Navbar'
@@ -8,6 +8,84 @@ export default function Dashboard() {
   const { user, enrollment, enroll } = useAuth()
   const navigate = useNavigate()
   const [roadmap, setRoadmap] = useState(enrollment?.roadmap || [])
+  const [submissions, setSubmissions] = useState([])
+  const [activeSubmissionForm, setActiveSubmissionForm] = useState(null)
+  const [projectForm, setProjectForm] = useState({ title: '', description: '', repoLink: '' })
+
+  useEffect(() => {
+    const loaded = JSON.parse(localStorage.getItem('eduflick_submissions') || '[]')
+    setSubmissions(loaded)
+  }, [])
+
+  // Auto-complete project lessons when approved
+  useEffect(() => {
+    if (!enrollment || !roadmap.length || !submissions.length) return
+    
+    let needsUpdate = false
+    const updatedRoadmap = roadmap.map((mod, mi) => {
+      const updatedLessons = mod.lessons.map((lesson, li) => {
+        const isProject = lesson.title.toLowerCase().includes('project')
+        if (isProject && !lesson.completed) {
+          const sub = submissions.find(s => 
+            s.studentName === user.name && 
+            s.trackName === enrollment.track.name && 
+            s.lessonId === lesson.id && 
+            s.status === 'approved'
+          )
+          if (sub) {
+            needsUpdate = true
+            return { ...lesson, completed: true }
+          }
+        }
+        return lesson
+      })
+      
+      if (needsUpdate) {
+        const unlockedLessons = updatedLessons.map((lesson, li) => {
+          if (li > 0 && updatedLessons[li - 1].completed && lesson.locked) {
+            return { ...lesson, locked: false }
+          }
+          return lesson
+        })
+        const allDone = unlockedLessons.every(l => l.completed)
+        return { ...mod, lessons: unlockedLessons, assessmentUnlocked: allDone }
+      }
+      return mod
+    })
+
+    if (needsUpdate) {
+      setRoadmap(updatedRoadmap)
+      enroll({ ...enrollment, roadmap: updatedRoadmap })
+    }
+  }, [submissions])
+
+  const handleSubmitProject = (e, lessonId) => {
+    e.preventDefault()
+    if (!projectForm.title || !projectForm.description || !projectForm.repoLink) {
+      alert('Please fill in all fields.')
+      return
+    }
+    const newSubmission = {
+      id: Date.now().toString(),
+      studentName: user.name,
+      trackName: enrollment.track.name,
+      mentorName: enrollment.mentor.name,
+      lessonId: lessonId,
+      title: projectForm.title,
+      description: projectForm.description,
+      repoLink: projectForm.repoLink,
+      status: 'pending',
+      submittedAt: new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })
+    }
+
+    const loaded = JSON.parse(localStorage.getItem('eduflick_submissions') || '[]')
+    const filtered = loaded.filter(s => !(s.studentName === user.name && s.trackName === enrollment.track.name && s.lessonId === lessonId))
+    const updated = [...filtered, newSubmission]
+    localStorage.setItem('eduflick_submissions', JSON.stringify(updated))
+    setSubmissions(updated)
+    setActiveSubmissionForm(null)
+    setProjectForm({ title: '', description: '', repoLink: '' })
+  }
 
   if (!enrollment) return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-gray-900 dark:text-slate-100 transition-colors duration-300">
@@ -92,7 +170,7 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-
+        
         {/* Roadmap */}
         <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-5">Your Learning Roadmap</h2>
         <div className="space-y-6">
@@ -124,51 +202,162 @@ export default function Dashboard() {
 
               {/* Lessons */}
               <div className="divide-y divide-gray-100 dark:divide-slate-800/60">
-                {module.lessons.map((lesson, li) => (
-                  <div key={lesson.id} className={`px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${lesson.locked ? 'opacity-55 bg-gray-50/20 dark:bg-slate-900/20' : 'hover:bg-gray-50/30 dark:hover:bg-slate-800/10'} transition-all duration-300`}>
-                    <div className="flex items-center gap-3.5">
-                      <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 text-xs font-bold ${
-                        lesson.completed ? 'bg-green-500 border-green-500 text-white shadow-md shadow-green-500/10' :
-                        lesson.locked ? 'border-gray-300 dark:border-slate-700 text-gray-400 dark:text-slate-600' :
-                        'border-purple-400 dark:border-purple-600 text-purple-500 dark:text-purple-400'
-                      }`}>
-                        {lesson.completed ? '✓' : lesson.locked ? '🔒' : li + 1}
+                {module.lessons.map((lesson, li) => {
+                  const isProject = lesson.title.toLowerCase().includes('project')
+                  const sub = isProject ? submissions.find(s => s.studentName === user.name && s.trackName === enrollment.track.name && s.lessonId === lesson.id) : null
+
+                  return (
+                    <div key={lesson.id} className={`px-6 py-4 flex flex-col ${lesson.locked ? 'opacity-55 bg-gray-50/20 dark:bg-slate-900/20' : 'hover:bg-gray-50/30 dark:hover:bg-slate-800/10'} transition-all duration-300`}>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3.5">
+                          <div className={`w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 text-xs font-bold ${
+                            lesson.completed ? 'bg-green-500 border-green-500 text-white shadow-md shadow-green-500/10' :
+                            lesson.locked ? 'border-gray-300 dark:border-slate-700 text-gray-400 dark:text-slate-600' :
+                            'border-purple-400 dark:border-purple-600 text-purple-500 dark:text-purple-400'
+                          }`}>
+                            {lesson.completed ? '✓' : lesson.locked ? '🔒' : li + 1}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`text-sm font-semibold ${lesson.locked ? 'text-gray-400 dark:text-slate-600' : 'text-gray-800 dark:text-slate-200'}`}>{lesson.title}</p>
+                              {isProject && (
+                                <span className="text-[9px] bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border border-purple-200/20 dark:border-purple-900/30">
+                                  Project Submission
+                                </span>
+                              )}
+                              {isProject && sub && (
+                                <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
+                                  sub.status === 'pending' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200/20 dark:border-amber-900/30' :
+                                  sub.status === 'approved' ? 'bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 border-green-200/20 dark:border-green-900/30' :
+                                  'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200/20 dark:border-red-900/30'
+                                }`}>
+                                  {sub.status === 'pending' ? 'Under Review' : sub.status === 'approved' ? 'Approved' : 'Needs Changes'}
+                                </span>
+                              )}
+                            </div>
+                            {!lesson.locked && !lesson.completed && !isProject && (
+                              <p className="text-xs text-purple-500 dark:text-purple-400 font-medium mt-0.5">Ready to learn</p>
+                            )}
+                            {isProject && !lesson.locked && !lesson.completed && !sub && (
+                              <p className="text-xs text-amber-500 dark:text-amber-400 font-medium mt-0.5">Project details required to complete</p>
+                            )}
+                            {lesson.locked && (
+                              <p className="text-xs text-gray-400 dark:text-slate-600 mt-0.5">Complete previous lesson to unlock</p>
+                            )}
+                            {lesson.completed && (
+                              <p className="text-xs text-green-500 dark:text-green-400 font-medium mt-0.5">Completed</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {!lesson.locked && (
+                          <div className="flex gap-2.5 sm:self-center">
+                            <button
+                              onClick={() => navigate(`/lesson/${lesson.id}`, { state: { lesson, moduleIndex: mi, lessonIndex: li } })}
+                              className="text-xs bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-950/70 text-purple-700 dark:text-purple-300 px-4 py-2 rounded-xl font-bold border border-purple-200/30 dark:border-purple-900/30 transition-all active:scale-95"
+                            >
+                              Open lesson
+                            </button>
+                            
+                            {!isProject && !lesson.completed && (
+                              <button
+                                onClick={() => handleCompleteLesson(mi, li)}
+                                className="text-xs bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-450 text-white px-4 py-2 rounded-xl font-bold transition-all shadow-md shadow-purple-600/10 active:scale-95"
+                              >
+                                Mark done ✓
+                              </button>
+                            )}
+
+                            {isProject && (!sub || sub.status !== 'approved') && (
+                              <button
+                                onClick={() => {
+                                  if (activeSubmissionForm === lesson.id) {
+                                    setActiveSubmissionForm(null)
+                                  } else {
+                                    setActiveSubmissionForm(lesson.id)
+                                    setProjectForm({
+                                      title: sub?.title || '',
+                                      description: sub?.description || '',
+                                      repoLink: sub?.repoLink || ''
+                                    })
+                                  }
+                                }}
+                                className="text-xs bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-500 text-white px-4 py-2 rounded-xl font-bold transition-all shadow-md shadow-amber-500/10 active:scale-95"
+                              >
+                                {sub ? 'Update Project' : 'Upload Details'}
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <p className={`text-sm font-semibold ${lesson.locked ? 'text-gray-400 dark:text-slate-600' : 'text-gray-800 dark:text-slate-200'}`}>{lesson.title}</p>
-                        {!lesson.locked && !lesson.completed && (
-                          <p className="text-xs text-purple-500 dark:text-purple-400 font-medium mt-0.5">Ready to learn</p>
-                        )}
-                        {lesson.locked && (
-                          <p className="text-xs text-gray-400 dark:text-slate-600 mt-0.5">Complete previous lesson to unlock</p>
-                        )}
-                        {lesson.completed && (
-                          <p className="text-xs text-green-500 dark:text-green-400 font-medium mt-0.5">Completed</p>
-                        )}
-                      </div>
+
+                      {/* Inline form */}
+                      {isProject && activeSubmissionForm === lesson.id && (
+                        <div className="mt-4 p-5 bg-gray-50/50 dark:bg-slate-800/20 border border-gray-200 dark:border-slate-800 rounded-2xl animate-fadeIn">
+                          <h4 className="text-xs font-extrabold text-purple-600 dark:text-purple-400 uppercase tracking-widest mb-3.5">
+                            Upload Project details
+                          </h4>
+                          <form onSubmit={(e) => handleSubmitProject(e, lesson.id)} className="space-y-3.5">
+                            <div>
+                              <input
+                                type="text"
+                                placeholder="Project Title"
+                                value={projectForm.title}
+                                onChange={e => setProjectForm({ ...projectForm, title: e.target.value })}
+                                className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs text-gray-800 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400 dark:focus:ring-purple-900 dark:focus:border-purple-900 transition-all"
+                              />
+                            </div>
+                            <div>
+                              <textarea
+                                placeholder="Project Description (explain how it works, design choices)"
+                                rows={3}
+                                value={projectForm.description}
+                                onChange={e => setProjectForm({ ...projectForm, description: e.target.value })}
+                                className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs text-gray-800 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400 dark:focus:ring-purple-900 dark:focus:border-purple-900 transition-all"
+                              />
+                            </div>
+                            <div>
+                              <input
+                                type="url"
+                                placeholder="Repository Link (e.g. GitHub)"
+                                value={projectForm.repoLink}
+                                onChange={e => setProjectForm({ ...projectForm, repoLink: e.target.value })}
+                                className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl px-4 py-2.5 text-xs text-gray-800 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-purple-400 dark:focus:ring-purple-900 dark:focus:border-purple-900 transition-all"
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                type="submit"
+                                className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-400 text-white font-bold rounded-xl px-4 py-2 text-xs transition-all shadow-md shadow-purple-600/10 active:scale-95"
+                              >
+                                Submit details
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActiveSubmissionForm(null)}
+                                className="border border-gray-250 dark:border-slate-800 text-gray-650 dark:text-slate-400 font-bold rounded-xl px-4 py-2 text-xs hover:bg-gray-100 dark:hover:bg-slate-850 transition-all"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      )}
+
+                      {/* Inline Submission Details */}
+                      {isProject && sub && activeSubmissionForm !== lesson.id && (
+                        <div className="mt-3.5 p-4 bg-gray-50/50 dark:bg-slate-850/30 border border-gray-200 dark:border-slate-800/40 rounded-2xl text-xs">
+                          <p className="font-extrabold text-gray-800 dark:text-slate-350 mb-1">Uploaded details:</p>
+                          <p className="text-gray-650 dark:text-slate-400"><span className="font-bold text-gray-400 dark:text-slate-550">Title:</span> {sub.title}</p>
+                          <p className="text-gray-650 dark:text-slate-400"><span className="font-bold text-gray-400 dark:text-slate-550">Description:</span> {sub.description}</p>
+                          <a href={sub.repoLink} target="_blank" rel="noopener noreferrer" className="text-purple-600 dark:text-purple-400 font-bold hover:underline break-all mt-1.5 block">
+                            🔗 Repo Link: {sub.repoLink}
+                          </a>
+                        </div>
+                      )}
                     </div>
-                    
-                    {!lesson.locked && !lesson.completed && (
-                      <div className="flex gap-2.5 sm:self-center">
-                        <button
-                          onClick={() => navigate(`/lesson/${lesson.id}`, { state: { lesson, moduleIndex: mi, lessonIndex: li } })}
-                          className="flex-1 sm:flex-initial text-xs bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-950/70 text-purple-700 dark:text-purple-300 px-4 py-2 rounded-xl font-bold border border-purple-200/30 dark:border-purple-900/30 transition-all active:scale-95"
-                        >
-                          Open lesson
-                        </button>
-                        <button
-                          onClick={() => handleCompleteLesson(mi, li)}
-                          className="flex-1 sm:flex-initial text-xs bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-450 text-white px-4 py-2 rounded-xl font-bold transition-all shadow-md shadow-purple-600/10 active:scale-95"
-                        >
-                          Mark done ✓
-                        </button>
-                      </div>
-                    )}
-                    {lesson.completed && (
-                      <span className="hidden sm:inline-block text-xs font-bold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30 border border-green-200/30 dark:border-green-900/30 px-3 py-1 rounded-full">Done</span>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ))}

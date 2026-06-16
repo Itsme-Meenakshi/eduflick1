@@ -78,6 +78,17 @@ erDiagram
         int best_score
         datetime completed_at
     }
+
+    PROJECT_SUBMISSIONS {
+        int id PK
+        int enrollment_id FK "Points to Enrollments"
+        string project_title
+        string project_description
+        string repository_link
+        string status "pending | approved | rejected"
+        datetime submitted_at
+        datetime updated_at
+    }
     
     USERS ||--o| MENTORS : "can be a"
     USERS ||--o| ENROLLMENTS : "has"
@@ -85,6 +96,7 @@ erDiagram
     MENTORS ||--o| ENROLLMENTS : "guided by"
     ENROLLMENTS ||--o| USER_PROGRESS : "tracks"
     ENROLLMENTS ||--o| MODULE_ASSESSMENTS : "tracks"
+    ENROLLMENTS ||--o| PROJECT_SUBMISSIONS : "submits"
 ```
 
 ---
@@ -119,9 +131,19 @@ Your backend will need to expose the following REST endpoints:
 *   `POST /api/assessments/:moduleId/submit`
     *   Validates submitted answers on the server, calculates score, updates module completion state, and unlocks the next module if the passing score threshold is met.
 
-### Mentor Operations
+### Project Submissions (Students)
+*   `POST /api/submissions`
+    *   Submits project details (enrollmentId, project_title, project_description, repository_link).
+*   `GET /api/submissions/active`
+    *   Retrieves the current student's project submissions and their status.
+
+### Mentor Operations & Project Review
 *   `GET /api/mentor/students`
     *   Fetches all students enrolled under the currently logged-in mentor, along with their progress, streaks, and last active dates.
+*   `GET /api/mentor/submissions`
+    *   Retrieves all pending project submissions for review.
+*   `POST /api/submissions/:id/review`
+    *   Allows a mentor to approve or reject a project submission with status `approved` or `rejected`.
 
 ---
 
